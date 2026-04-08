@@ -15,6 +15,7 @@
     <!-- Firebase CDN -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
     <script type="text/babel">
       const { useEffect, useMemo, useState } = React;
@@ -31,6 +32,8 @@
 
       firebase.initializeApp(firebaseConfig);
       const db = firebase.firestore();
+      const auth = firebase.auth();
+      const provider = new firebase.auth.GoogleAuthProvider();
 
       const STORAGE_KEY = "ownerBuilderDashboardData_v1";
 
@@ -233,6 +236,9 @@
         const [search, setSearch] = useState("");
         const [data, setData] = useState(loadData);
         const [loading, setLoading] = useState(true);
+        const [user, setUser] = useState(null);
+        const [authReady, setAuthReady] = useState(false);
+        const [syncMessage, setSyncMessage] = useState("Checking login...");
         const [quoteForm, setQuoteForm] = useState(emptyQuote);
         const [selectionForm, setSelectionForm] = useState(emptySelection);
         const [budgetForm, setBudgetForm] = useState(emptyBudget);
@@ -240,25 +246,61 @@
         const [decisionForm, setDecisionForm] = useState(emptyDecision);
         const [saveMessage, setSaveMessage] = useState("Ready");
 
-        // Save to Firebase
+        // Auth state
+        useEffect(() => {
+          const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+            setUser(firebaseUser || null);
+            setAuthReady(true);
+            if (!firebaseUser) {
+              setLoading(false);
+              setSyncMessage("Sign in to sync across devices");
+            }
+          });
+          return () => unsubscribe();
+        }, []);
+
+        // Save to Firebase + local backup
         useEffect(() => {
           if (loading) return;
-          db.collection("projects").doc("main").set(data);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
           setSaveMessage("Saved locally on this device");
+
+          if (!user) {
+            const timer = setTimeout(() => setSaveMessage("Ready"), 1500);
+            return () => clearTimeout(timer);
+          }
+
+          db.collection("users").doc(user.uid).collection("projects").doc("main").set(data)
+            .then(() => setSyncMessage("Synced to cloud"))
+            .catch(() => setSyncMessage("Cloud sync failed"));
+
           const timer = setTimeout(() => setSaveMessage("Ready"), 1500);
           return () => clearTimeout(timer);
-        }, [data]);
+        }, [data, loading, user]);
 
-        // Load from Firebase
+        // Load from Firebase for signed-in user
         useEffect(() => {
-          db.collection("projects").doc("main").onSnapshot((doc) => {
-            if (doc.exists) {
-              setData(doc.data());
-            }
-            setLoading(false);
-          });
-        }, []);
+          if (!user) return;
+          setLoading(true);
+          setSyncMessage("Loading cloud data...");
+          const unsubscribe = db.collection("users").doc(user.uid).collection("projects").doc("main")
+            .onSnapshot(
+              (doc) => {
+                if (doc.exists) {
+                  setData({ ...defaultData, ...doc.data() });
+                } else {
+                  db.collection("users").doc(user.uid).collection("projects").doc("main").set(loadData());
+                }
+                setLoading(false);
+                setSyncMessage("Synced to cloud");
+              },
+              () => {
+                setLoading(false);
+                setSyncMessage("Cloud sync failed");
+              }
+            );
+          return () => unsubscribe();
+        }, [user]);
 
         const totals = useMemo(() => {
           const budget = data.budget.reduce((a, b) => a + Number(b.budget || 0), 0);
@@ -326,15 +368,30 @@
         }
 
         function clearAllData() {
-          if (!window.confirm("Clear all saved dashboard data on this device?")) return;
+          if (!window.confirm("Clear all saved dashboard data?")) return;
           localStorage.removeItem(STORAGE_KEY);
+          if (user) {
+            db.collection("users").doc(user.uid).collection("projects").doc("main").set(defaultData);
+          }
           setData(defaultData);
           setQuoteForm(emptyQuote);
           setSelectionForm(emptySelection);
           setBudgetForm(emptyBudget);
           setScheduleForm(emptySchedule);
           setDecisionForm(emptyDecision);
-          setSaveMessage("All local data cleared");
+          setSaveMessage("All saved data cleared");
+          setSyncMessage(user ? "Cloud data cleared" : "Local data cleared");
+        }
+
+        function signIn() {
+          auth.signInWithPopup(provider).catch(() => {
+            auth.signInWithRedirect(provider);
+          });
+        }
+
+        function signOutUser() {
+          auth.signOut();
+          setData(loadData());
         }
 
         return (
@@ -353,14 +410,31 @@
                   </div>
                   <div className="flex flex-col items-start gap-3 md:items-end">
                     <div className="text-sm text-slate-500">{saveMessage}</div>
-                    <div className="flex gap-2">
-                      <button onClick={clearAllData} className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-medium text-red-700 border border-red-200">Clear all saved data</button>
-                    </div>
+                    <div className="text-sm text-slate-500">{syncMessage}</div>
+                    {authReady && user ? (
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <div className="text-sm font-medium text-slate-700">Signed in as {user.displayName || user.email || "Google user"}</div>
+                        <div className="flex gap-2">
+                          <button onClick={signOutUser} className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 border border-slate-200">Sign out</button>
+                          <button onClick={clearAllData} className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-medium text-red-700 border border-red-200">Clear all saved data</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button onClick={signIn} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Sign in with Google</button>
+                        <button onClick={clearAllData} className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-medium text-red-700 border border-red-200">Clear all saved data</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
 
               <Card className="p-6">
+                {!user && authReady && (
+                  <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-slate-700">
+                    You are currently using local-only mode. Sign in with Google to sync this project across phone and desktop.
+                  </div>
+                )}
                 <div className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <LabeledInput label="Project name" value={data.projectName} onChange={(e) => setData((prev) => ({ ...prev, projectName: e.target.value }))} placeholder="Custom Home Project" />
                   <LabeledInput label="Current phase" value={data.phase} onChange={(e) => setData((prev) => ({ ...prev, phase: e.target.value }))} placeholder="Planning" />
@@ -747,3 +821,4 @@
     </script>
   </body>
 </html>
+
