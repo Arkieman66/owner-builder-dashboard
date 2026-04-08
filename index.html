@@ -186,14 +186,21 @@
       }
 
       function LabeledInput({ label, value, onChange, placeholder = "", type = "text" }) {
-        function formatNumber(val) {
+        const isNumeric = type === "number";
+
+        function formatDisplay(val) {
+          if (!isNumeric) return value ?? "";
           if (val === "" || val === null || val === undefined) return "";
-          const num = String(val).replace(/,/g, "");
-          if (isNaN(num)) return val;
-          return Number(num).toLocaleString("en-US", { maximumFractionDigits: 0 });
+          const raw = String(val).replace(/,/g, "").trim();
+          if (raw === "" || raw === "-" || isNaN(Number(raw))) return raw;
+          return Number(raw).toLocaleString("en-US", { maximumFractionDigits: 0 });
         }
 
         function handleChange(e) {
+          if (!isNumeric) {
+            onChange(e);
+            return;
+          }
           const raw = e.target.value.replace(/,/g, "");
           onChange({ target: { value: raw } });
         }
@@ -202,22 +209,12 @@
           <label className="block space-y-1">
             <div className="text-sm font-medium text-slate-700">{label}</div>
             <input
-              type="text"
-              inputMode="numeric"
-              value={formatNumber(value)}
+              type={isNumeric ? "text" : type}
+              inputMode={isNumeric ? "numeric" : undefined}
+              value={formatDisplay(value)}
               onChange={handleChange}
               placeholder={placeholder}
-              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400 text-right font-medium"
-            />
-          </label>
-        );
-      }</div>
-            <input
-              type={type}
-              value={value}
-              onChange={onChange}
-              placeholder={placeholder}
-              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+              className={`w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400 ${isNumeric ? "text-right font-medium" : ""}`}
             />
           </label>
         );
