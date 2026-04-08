@@ -252,6 +252,13 @@
           }));
         }
 
+        function updateItem(key, index, field, value) {
+          setData((prev) => ({
+            ...prev,
+            [key]: prev[key].map((item, i) => (i === index ? { ...item, [field]: value } : item)),
+          }));
+        }
+
         function addQuote(e) {
           e.preventDefault();
           if (!quoteForm.contractor && !quoteForm.category) return;
@@ -561,16 +568,46 @@
                       const pct = Number(b.budget || 0) > 0 ? Math.min(100, Math.round(((Number(b.actual || 0) + Number(b.committed || 0)) / Number(b.budget || 0)) * 100)) : 0;
                       return (
                         <Card key={idx} className="p-6">
-                          <div className="text-base font-semibold text-slate-900">{b.name || "Unnamed category"}</div>
-                          <div className="mt-4 space-y-2 text-sm text-slate-600">
-                            <div className="flex justify-between"><span>Budget</span><span className="font-medium text-slate-900">{money(b.budget)}</span></div>
-                            <div className="flex justify-between"><span>Actual</span><span className="font-medium text-slate-900">{money(b.actual)}</span></div>
-                            <div className="flex justify-between"><span>Committed</span><span className="font-medium text-slate-900">{money(b.committed)}</span></div>
+                          <div className="space-y-4">
+                            <LabeledSelect
+                              label="Category"
+                              value={b.name || CATEGORY_OPTIONS[0]}
+                              onChange={(e) => updateItem('budget', idx, 'name', e.target.value)}
+                              options={CATEGORY_OPTIONS}
+                            />
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <LabeledInput
+                                label="Budget"
+                                type="number"
+                                value={b.budget || ''}
+                                onChange={(e) => updateItem('budget', idx, 'budget', e.target.value)}
+                                placeholder="0"
+                              />
+                              <LabeledInput
+                                label="Actual"
+                                type="number"
+                                value={b.actual || ''}
+                                onChange={(e) => updateItem('budget', idx, 'actual', e.target.value)}
+                                placeholder="0"
+                              />
+                              <LabeledInput
+                                label="Committed"
+                                type="number"
+                                value={b.committed || ''}
+                                onChange={(e) => updateItem('budget', idx, 'committed', e.target.value)}
+                                placeholder="0"
+                              />
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
+                              <div className="flex justify-between"><span>Budget</span><span className="font-medium text-slate-900">{money(b.budget)}</span></div>
+                              <div className="flex justify-between"><span>Actual</span><span className="font-medium text-slate-900">{money(b.actual)}</span></div>
+                              <div className="flex justify-between"><span>Committed</span><span className="font-medium text-slate-900">{money(b.committed)}</span></div>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                              <div className="h-full rounded-full bg-slate-800" style={{ width: `${pct}%` }}></div>
+                            </div>
+                            <button onClick={() => removeItem('budget', idx)} className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-medium text-red-700 border border-red-200">Delete</button>
                           </div>
-                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
-                            <div className="h-full rounded-full bg-slate-800" style={{ width: `${pct}%` }}></div>
-                          </div>
-                          <button onClick={() => removeItem('budget', idx)} className="mt-4 rounded-2xl bg-red-50 px-4 py-2 text-sm font-medium text-red-700 border border-red-200">Delete</button>
                         </Card>
                       );
                     })}
