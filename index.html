@@ -17,8 +17,34 @@
 
       const STORAGE_KEY = "ownerBuilderDashboardData_v1";
 
+      const CATEGORY_OPTIONS = [
+        "Sitework",
+        "Foundation",
+        "Framing",
+        "Roofing",
+        "Exterior",
+        "Windows / Doors",
+        "Plumbing",
+        "Electrical",
+        "HVAC",
+        "Insulation / Drywall",
+        "Cabinets",
+        "Countertops",
+        "Flooring",
+        "Paint",
+        "Trim",
+        "Appliances",
+        "Lighting",
+        "Plumbing Fixtures",
+        "Hardware",
+        "Porches / Decks",
+        "Garage",
+        "Landscaping",
+        "Other",
+      ];
+
       const emptyQuote = {
-        category: "",
+        category: CATEGORY_OPTIONS[0],
         contractor: "",
         phone: "",
         email: "",
@@ -29,6 +55,7 @@
       };
 
       const emptySelection = {
+        category: CATEGORY_OPTIONS[0],
         room: "",
         item: "",
         status: "Not started",
@@ -38,7 +65,7 @@
       };
 
       const emptyBudget = {
-        name: "",
+        name: CATEGORY_OPTIONS[0],
         budget: "",
         actual: "",
         committed: "",
@@ -167,6 +194,23 @@
         );
       }
 
+      function LabeledSelect({ label, value, onChange, options }) {
+        return (
+          <label className="block space-y-1">
+            <div className="text-sm font-medium text-slate-700">{label}</div>
+            <select
+              value={value}
+              onChange={onChange}
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+            >
+              {options.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+        );
+      }
+
       function App() {
         const [tab, setTab] = useState("dashboard");
         const [search, setSearch] = useState("");
@@ -196,7 +240,7 @@
 
         const filteredSelections = data.selections.filter((s) => {
           const q = search.toLowerCase();
-          return !q || [s.room, s.item, s.notes, s.product, s.status].join(" ").toLowerCase().includes(q);
+          return !q || [s.category, s.room, s.item, s.notes, s.product, s.status].join(" ").toLowerCase().includes(q);
         });
 
         const tabs = ["dashboard", "quotes", "selections", "budget", "schedule", "decisions"];
@@ -372,7 +416,7 @@
                   <Card className="p-6">
                     <SectionTitle title="Add quote" subtitle="Store multiple bids with contact info and notes" />
                     <form onSubmit={addQuote} className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                      <LabeledInput label="Category" value={quoteForm.category} onChange={(e) => setQuoteForm({ ...quoteForm, category: e.target.value })} placeholder="Flooring" />
+                      <LabeledSelect label="Category" value={quoteForm.category} onChange={(e) => setQuoteForm({ ...quoteForm, category: e.target.value })} options={CATEGORY_OPTIONS} />
                       <LabeledInput label="Contractor" value={quoteForm.contractor} onChange={(e) => setQuoteForm({ ...quoteForm, contractor: e.target.value })} placeholder="Company or person" />
                       <LabeledInput label="Phone" value={quoteForm.phone} onChange={(e) => setQuoteForm({ ...quoteForm, phone: e.target.value })} placeholder="(501) ..." />
                       <LabeledInput label="Email" value={quoteForm.email} onChange={(e) => setQuoteForm({ ...quoteForm, email: e.target.value })} placeholder="name@email.com" />
@@ -432,6 +476,7 @@
                   <Card className="p-6">
                     <SectionTitle title="Add selection" subtitle="Track decisions like flooring, paint, pulls, fixtures, and finishes" />
                     <form onSubmit={addSelection} className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <LabeledSelect label="Category" value={selectionForm.category} onChange={(e) => setSelectionForm({ ...selectionForm, category: e.target.value })} options={CATEGORY_OPTIONS} />
                       <LabeledInput label="Room / area" value={selectionForm.room} onChange={(e) => setSelectionForm({ ...selectionForm, room: e.target.value })} placeholder="Kitchen" />
                       <LabeledInput label="Item" value={selectionForm.item} onChange={(e) => setSelectionForm({ ...selectionForm, item: e.target.value })} placeholder="Cabinet pulls" />
                       <LabeledInput label="Product" value={selectionForm.product} onChange={(e) => setSelectionForm({ ...selectionForm, product: e.target.value })} placeholder="Brand / SKU / finish" />
@@ -474,8 +519,12 @@
                           <Badge>{s.room || "Unassigned"}</Badge>
                           <Badge status>{s.status || "Not started"}</Badge>
                         </div>
-                        <div className="mt-4 text-xl font-semibold text-slate-900">{s.item || "Unnamed selection"}</div>
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <div className="text-xl font-semibold text-slate-900">{s.item || "Unnamed selection"}</div>
+                          <Badge>{s.category || "Other"}</Badge>
+                        </div>
                         <div className="mt-4 space-y-2 text-sm text-slate-600">
+                          <div><span className="font-medium text-slate-900">Category:</span> {s.category || "—"}</div>
                           <div><span className="font-medium text-slate-900">Product:</span> {s.product || "—"}</div>
                           <div><span className="font-medium text-slate-900">Budget:</span> {s.budget || "—"}</div>
                         </div>
@@ -495,7 +544,7 @@
                   <Card className="p-6">
                     <SectionTitle title="Add budget line" subtitle="Track budget, committed amount, and actual amount" />
                     <form onSubmit={addBudget} className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                      <LabeledInput label="Category" value={budgetForm.name} onChange={(e) => setBudgetForm({ ...budgetForm, name: e.target.value })} placeholder="Foundation" />
+                      <LabeledSelect label="Category" value={budgetForm.name} onChange={(e) => setBudgetForm({ ...budgetForm, name: e.target.value })} options={CATEGORY_OPTIONS} />
                       <LabeledInput label="Budget" type="number" value={budgetForm.budget} onChange={(e) => setBudgetForm({ ...budgetForm, budget: e.target.value })} placeholder="34000" />
                       <LabeledInput label="Actual" type="number" value={budgetForm.actual} onChange={(e) => setBudgetForm({ ...budgetForm, actual: e.target.value })} placeholder="0" />
                       <LabeledInput label="Committed" type="number" value={budgetForm.committed} onChange={(e) => setBudgetForm({ ...budgetForm, committed: e.target.value })} placeholder="31500" />
