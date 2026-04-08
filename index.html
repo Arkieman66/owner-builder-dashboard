@@ -117,6 +117,7 @@
         budget: [],
         schedule: [],
         decisions: [],
+        expenses: [],
       };
 
       function loadData() {
@@ -132,6 +133,7 @@
             budget: Array.isArray(parsed.budget) ? parsed.budget : [],
             schedule: Array.isArray(parsed.schedule) ? parsed.schedule : [],
             decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+            expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
           };
         } catch (e) {
           return defaultData;
@@ -270,6 +272,7 @@
         const [saveMessage, setSaveMessage] = useState("Ready");
         const [selectionPhotoFiles, setSelectionPhotoFiles] = useState([]);
         const [uploadingSelectionPhotos, setUploadingSelectionPhotos] = useState(false);
+        const [expenseImportMessage, setExpenseImportMessage] = useState("");
 
         // Auth state
         useEffect(() => {
@@ -336,12 +339,20 @@
           return { budget, actual, committed, progress };
         }, [data.budget]);
 
+        const expenseTotalsByCategory = useMemo(() => {
+          return (data.expenses || []).reduce((acc, row) => {
+            const key = row.category || "Other";
+            acc[key] = (acc[key] || 0) + Number(row.amount || 0);
+            return acc;
+          }, {});
+        }, [data.expenses]);
+
         const filteredSelections = data.selections.filter((s) => {
           const q = search.toLowerCase();
           return !q || [s.category, s.room, s.item, s.notes, s.product, s.status].join(" ").toLowerCase().includes(q);
         });
 
-        const tabs = ["dashboard", "quotes", "selections", "budget", "schedule", "decisions"];
+        const tabs = ["dashboard", "quotes", "selections", "budget", "schedule", "decisions", "expenses"];
 
         async function removeItem(key, index) {
           const item = data[key][index];
@@ -471,6 +482,97 @@
           setSelectionPhotoFiles(files);
         }
 
+        function parseCSVLine(line) {
+          const result = [];
+          let current = "";
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            const next = line[i + 1];
+            if (char === '"') {
+              if (inQuotes && next === '"') {
+                current += '"';
+                i++;
+              } else {
+                inQuotes = !inQuotes;
+              }
+            } else if (char === ',' && !inQuotes) {
+              result.push(current);
+              current = "";
+            } else {
+              current += char;
+            }
+          }
+          result.push(current);
+          return result.map((v) => v.trim());
+        }
+
+        function handleExpenseCSVImport(e) {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            try {
+              const text = String(event.target?.result || "").replace(/^﻿/, "");
+              const lines = text.split(/
+?
+/).filter((line) => line.trim() !== "");
+              if (lines.length < 2) {
+                setExpenseImportMessage("CSV file appears empty.");
+                return;
+              }
+              const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase());
+              const required = ["date", "check number", "payee", "description", "category", "amount"];
+              const missing = required.filter((name) => !headers.includes(name));
+              if (missing.length > 0) {
+                setExpenseImportMessage(`Missing column(s): ${missing.join(", ")}`);
+                return;
+              }
+              const idx = {
+                date: headers.indexOf("date"),
+                checkNumber: headers.indexOf("check number"),
+                payee: headers.indexOf("payee"),
+                description: headers.indexOf("description"),
+                category: headers.indexOf("category"),
+                amount: headers.indexOf("amount"),
+              };
+              const expenses = [];
+              for (let i = 1; i < lines.length; i++) {
+                const cols = parseCSVLine(lines[i]);
+                const amountRaw = String(cols[idx.amount] || "").replace(/[$,]/g, "").trim();
+                const amount = Number(amountRaw);
+                if (!cols[idx.category] && !amountRaw) continue;
+                if (!cols[idx.category] || Number.isNaN(amount)) continue;
+                expenses.push({
+                  date: cols[idx.date] || "",
+                  checkNumber: cols[idx.checkNumber] || "",
+                  payee: cols[idx.payee] || "",
+                  description: cols[idx.description] || "",
+                  category: cols[idx.category] || "Other",
+                  amount,
+                });
+              }
+              const totalsMap = expenses.reduce((acc, row) => {
+                acc[row.category] = (acc[row.category] || 0) + Number(row.amount || 0);
+                return acc;
+              }, {});
+              setData((prev) => ({
+                ...prev,
+                expenses,
+                budget: prev.budget.map((line) => ({
+                  ...line,
+                  actual: totalsMap[line.name] ? String(Math.round(totalsMap[line.name])) : "0",
+                })),
+              }));
+              setExpenseImportMessage(`Imported ${expenses.length} expense row(s). Actuals replaced from CSV totals.`);
+            } catch (err) {
+              setExpenseImportMessage("Could not import that CSV file.");
+            }
+          };
+          reader.readAsText(file);
+          e.target.value = "";
+        }
+
         return (
           <div className="min-h-screen bg-slate-50 p-4 md:p-8">
             <div className="mx-auto max-w-7xl space-y-6">
@@ -534,8 +636,8 @@
                     <div className="mt-2 text-lg font-semibold">{data.decisions.length}</div>
                   </Card>
                   <Card className="rounded-2xl p-4">
-                    <div className="text-xs text-slate-500">Quotes Saved</div>
-                    <div className="mt-2 text-lg font-semibold">{data.quotes.length}</div>
+                    <div className="text-xs text-slate-500">Expense Rows</div>
+                    <div className="mt-2 text-lg font-semibold">{data.expenses.length}</div>
                   </Card>
                   <Card className="rounded-2xl p-4">
                     <div className="text-xs text-slate-500">Progress</div>
@@ -864,6 +966,74 @@
                           <button onClick={() => removeItem('schedule', idx)} className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-medium text-red-700 border border-red-200">Delete</button>
                         </div>
                       ))}
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {tab === "expenses" && (
+                <div className="space-y-4">
+                  <Card className="p-6">
+                    <SectionTitle title="Expenses import" subtitle="Import a CSV exported from Excel with Date, Check Number, Payee, Description, Category, Amount" />
+                    <div className="mt-4 space-y-4">
+                      <label className="block space-y-1">
+                        <div className="text-sm font-medium text-slate-700">CSV file</div>
+                        <input type="file" accept=".csv,text/csv" onChange={handleExpenseCSVImport} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400 bg-white" />
+                      </label>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        Import behavior: the CSV becomes the source of truth for Actual amounts. The app totals each category from imported rows and replaces the Actual field in your budget lines.
+                      </div>
+                      {expenseImportMessage && (
+                        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700">{expenseImportMessage}</div>
+                      )}
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <SectionTitle title="Imported expense summary" subtitle="Category totals calculated from the latest CSV import" />
+                    <div className="mt-4 space-y-2 text-sm">
+                      {Object.keys(expenseTotalsByCategory).length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">No expenses imported yet.</div>
+                      ) : Object.entries(expenseTotalsByCategory).map(([category, amount]) => (
+                        <div key={category} className="flex items-center justify-between rounded-2xl border border-slate-200 p-4">
+                          <div className="font-medium text-slate-900">{category}</div>
+                          <div className="font-semibold text-slate-900">{money(amount)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <SectionTitle title="Imported expense rows" subtitle="Detailed transaction log from the latest CSV import" />
+                    <div className="mt-4 overflow-x-auto">
+                      {data.expenses.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">No expense rows imported yet.</div>
+                      ) : (
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-left text-slate-500">
+                              <th className="px-3 py-2">Date</th>
+                              <th className="px-3 py-2">Check Number</th>
+                              <th className="px-3 py-2">Payee</th>
+                              <th className="px-3 py-2">Description</th>
+                              <th className="px-3 py-2">Category</th>
+                              <th className="px-3 py-2 text-right">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.expenses.map((row, idx) => (
+                              <tr key={idx} className="border-b border-slate-100">
+                                <td className="px-3 py-2">{row.date || "—"}</td>
+                                <td className="px-3 py-2">{row.checkNumber || "—"}</td>
+                                <td className="px-3 py-2">{row.payee || "—"}</td>
+                                <td className="px-3 py-2">{row.description || "—"}</td>
+                                <td className="px-3 py-2">{row.category || "—"}</td>
+                                <td className="px-3 py-2 text-right font-medium">{money(row.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                   </Card>
                 </div>
