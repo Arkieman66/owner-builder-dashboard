@@ -12,8 +12,25 @@
   <body class="bg-slate-50">
     <div id="root"></div>
 
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
     <script type="text/babel">
       const { useEffect, useMemo, useState } = React;
+
+      // Firebase config
+      const firebaseConfig = {
+        apiKey: "AIzaSyAFrdhfXiR93c7F-8LRB0_87mVWnOlv0uc",
+        authDomain: "house-build-dashboard-b36d6.firebaseapp.com",
+        projectId: "house-build-dashboard-b36d6",
+        storageBucket: "house-build-dashboard-b36d6.firebasestorage.app",
+        messagingSenderId: "1048757020108",
+        appId: "1:1048757020108:web:59cc1a8f85097b536d6969"
+      };
+
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
 
       const STORAGE_KEY = "ownerBuilderDashboardData_v1";
 
@@ -215,6 +232,7 @@
         const [tab, setTab] = useState("dashboard");
         const [search, setSearch] = useState("");
         const [data, setData] = useState(loadData);
+        const [loading, setLoading] = useState(true);
         const [quoteForm, setQuoteForm] = useState(emptyQuote);
         const [selectionForm, setSelectionForm] = useState(emptySelection);
         const [budgetForm, setBudgetForm] = useState(emptyBudget);
@@ -222,12 +240,25 @@
         const [decisionForm, setDecisionForm] = useState(emptyDecision);
         const [saveMessage, setSaveMessage] = useState("Ready");
 
+        // Save to Firebase
         useEffect(() => {
+          if (loading) return;
+          db.collection("projects").doc("main").set(data);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
           setSaveMessage("Saved locally on this device");
           const timer = setTimeout(() => setSaveMessage("Ready"), 1500);
           return () => clearTimeout(timer);
         }, [data]);
+
+        // Load from Firebase
+        useEffect(() => {
+          db.collection("projects").doc("main").onSnapshot((doc) => {
+            if (doc.exists) {
+              setData(doc.data());
+            }
+            setLoading(false);
+          });
+        }, []);
 
         const totals = useMemo(() => {
           const budget = data.budget.reduce((a, b) => a + Number(b.budget || 0), 0);
