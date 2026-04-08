@@ -186,9 +186,32 @@
       }
 
       function LabeledInput({ label, value, onChange, placeholder = "", type = "text" }) {
+        function formatNumber(val) {
+          if (val === "" || val === null || val === undefined) return "";
+          const num = String(val).replace(/,/g, "");
+          if (isNaN(num)) return val;
+          return Number(num).toLocaleString("en-US", { maximumFractionDigits: 0 });
+        }
+
+        function handleChange(e) {
+          const raw = e.target.value.replace(/,/g, "");
+          onChange({ target: { value: raw } });
+        }
+
         return (
           <label className="block space-y-1">
             <div className="text-sm font-medium text-slate-700">{label}</div>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={formatNumber(value)}
+              onChange={handleChange}
+              placeholder={placeholder}
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400 text-right font-medium"
+            />
+          </label>
+        );
+      }</div>
             <input
               type={type}
               value={value}
@@ -680,7 +703,7 @@
                               onChange={(e) => updateItem('budget', idx, 'name', e.target.value)}
                               options={CATEGORY_OPTIONS}
                             />
-                            <div className="grid gap-3 md:grid-cols-3">
+                            <div className="grid gap-3 md:grid-cols-1">
                               <LabeledInput
                                 label="Budget"
                                 type="number"
@@ -821,4 +844,3 @@
     </script>
   </body>
 </html>
-
